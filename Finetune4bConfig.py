@@ -68,7 +68,7 @@ class Finetune4bConfig:
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha
         self.lora_dropout = 0 if gradient_checkpointing else lora_dropout # should be 0 if gradient checkpointing is on
-        self.val_set_size = int(val_set_size) if val_set_size > 1.0 else float(val_set_size)
+        self.val_set_size = int(val_set_size) if val_set_size > 1.0 else val_set_size
         self.gradient_checkpointing = gradient_checkpointing
         self.gradient_checkpointing_ratio = gradient_checkpointing_ratio
         self.warmup_steps = warmup_steps
@@ -83,7 +83,7 @@ class Finetune4bConfig:
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.local_rank = int(os.environ.get("LOCAL_RANK", local_rank))
         self.ddp = self.world_size != 1
-        self.device_map = "auto" if not self.ddp else {"": self.local_rank}
+        self.device_map = {"": self.local_rank} if self.ddp else "auto"
         if self.ddp:
             self.gradient_accumulation_steps = self.gradient_accumulation_steps // self.world_size
         self.groupsize = groupsize

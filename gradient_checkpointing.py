@@ -42,10 +42,9 @@ class VarWrapper:
 
 def apply_gradient_checkpointing(model, checkpoint_ratio=1):
     new_forwards = []
-    modules = []
-    for n, m in model.named_modules():
-        if isinstance(m, LlamaDecoderLayer):
-            modules.append(m)
+    modules = [
+        m for n, m in model.named_modules() if isinstance(m, LlamaDecoderLayer)
+    ]
     if checkpoint_ratio < 1 and checkpoint_ratio > 0:
         checkpoint_locs = np.array((np.linspace(0, 1, int(len(modules) * checkpoint_ratio)) * (len(modules)-1)).round(), dtype=int)
     else:
@@ -53,7 +52,7 @@ def apply_gradient_checkpointing(model, checkpoint_ratio=1):
     for i in checkpoint_locs:
         m = modules[i]
         new_forwards.append(NewForward(m))
-        print('Forward Patch Applied For Block {}'.format(i))
+        print(f'Forward Patch Applied For Block {i}')
     for n, m in model.named_modules():
         if isinstance(m, torch.nn.Embedding):
             wrapper = VarWrapper(m)

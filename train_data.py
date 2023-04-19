@@ -93,10 +93,7 @@ class TrainTxt(ATrainData):
         r_b = ''
         new_rows = []
         for row in rows:
-            if len(r_b) == 0:
-                r_b += row
-            else:
-                r_b += '\n' + row
+            r_b += row if len(r_b) == 0 else '\n' + row
             if len(r_b) > thd:
                 new_rows.append(r_b)
                 r_b = ''

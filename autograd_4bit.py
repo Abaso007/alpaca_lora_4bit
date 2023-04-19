@@ -125,13 +125,25 @@ class Autograd4bitQuantLinear(nn.Module):
 
     def forward(self, x):
         if torch.is_grad_enabled():
-            out = AutogradMatmul4bit.apply(x, self.qweight, self.scales,
-                                           self.qzeros if not self.is_v1_model else self.zeros,
-                                           self.g_idx, self.bits, self.maxq)
+            out = AutogradMatmul4bit.apply(
+                x,
+                self.qweight,
+                self.scales,
+                self.zeros if self.is_v1_model else self.qzeros,
+                self.g_idx,
+                self.bits,
+                self.maxq,
+            )
         else:
-            out = matmul4bit_with_backend(x, self.qweight, self.scales,
-                                          self.qzeros if not self.is_v1_model else self.zeros,
-                                          self.g_idx, self.bits, self.maxq)
+            out = matmul4bit_with_backend(
+                x,
+                self.qweight,
+                self.scales,
+                self.zeros if self.is_v1_model else self.qzeros,
+                self.g_idx,
+                self.bits,
+                self.maxq,
+            )
         out += self.bias
         return out
 
@@ -141,13 +153,19 @@ def make_quant_for_4bit_autograd(module, names, name='', groupsize=-1, is_v1_mod
         return
     for attr in dir(module):
         tmp = getattr(module, attr)
-        name1 = name + '.' + attr if name != '' else attr
+        name1 = f'{name}.{attr}' if name != '' else attr
         if name1 in names:
             setattr(
                 module, attr, Autograd4bitQuantLinear(tmp.in_features, tmp.out_features, groupsize=groupsize, is_v1_model=is_v1_model)
             )
     for name1, child in module.named_children():
-        make_quant_for_4bit_autograd(child, names, name + '.' + name1 if name != '' else name1, groupsize=groupsize, is_v1_model=is_v1_model)
+        make_quant_for_4bit_autograd(
+            child,
+            names,
+            f'{name}.{name1}' if name != '' else name1,
+            groupsize=groupsize,
+            is_v1_model=is_v1_model,
+        )
 
 
 def model_to_half(model):
@@ -177,9 +195,11 @@ def find_layers(module, layers=[nn.Conv2d, nn.Linear], name=''):
         return {name: module}
     res = {}
     for name1, child in module.named_children():
-        res.update(find_layers(
-            child, layers=layers, name=name + '.' + name1 if name != '' else name1
-        ))
+        res |= find_layers(
+            child,
+            layers=layers,
+            name=f'{name}.{name1}' if name != '' else name1,
+        )
     return res
 
 
@@ -250,7 +270,7 @@ def load_llama_model_4bit_low_ram_and_offload(config_path, model_path, lora_path
         from peft import PeftModel
         from monkeypatch.peft_tuners_lora_monkey_patch import Linear4bitLt
         model = PeftModel.from_pretrained(model, lora_path, device_map={'': 'cpu'}, torch_dtype=torch.float32)
-        print(Style.BRIGHT + Fore.GREEN + '{} Lora Applied.'.format(lora_path))
+        print(Style.BRIGHT + Fore.GREEN + f'{lora_path} Lora Applied.')
 
     model.seqlen = seqlen
 
@@ -270,17 +290,23 @@ def load_llama_model_4bit_low_ram_and_offload(config_path, model_path, lora_path
 
     # rotary_emb fix
     for n, m in model.named_modules():
-        if 'rotary_emb' in n:
-            if getattr(m, '_hf_hook', None):
-                if isinstance(m._hf_hook, accelerate.hooks.SequentialHook):
-                    hooks = m._hf_hook.hooks
-                else:
-                    hooks = [m._hf_hook]
-                for hook in hooks:
-                    if hook.offload:
-                        if n + '.sin_cached' not in hook.weights_map.dataset.state_dict.keys():
-                            hook.weights_map.dataset.state_dict[n + '.sin_cached'] = sin_cached.clone().cpu()
-                            hook.weights_map.dataset.state_dict[n + '.cos_cached'] = cos_cached.clone().cpu()
+        if 'rotary_emb' in n and getattr(m, '_hf_hook', None):
+            if isinstance(m._hf_hook, accelerate.hooks.SequentialHook):
+                hooks = m._hf_hook.hooks
+            else:
+                hooks = [m._hf_hook]
+            for hook in hooks:
+                if (
+                    hook.offload
+                    and f'{n}.sin_cached'
+                    not in hook.weights_map.dataset.state_dict.keys()
+                ):
+                    hook.weights_map.dataset.state_dict[
+                        f'{n}.sin_cached'
+                    ] = sin_cached.clone().cpu()
+                    hook.weights_map.dataset.state_dict[
+                        f'{n}.cos_cached'
+                    ] = cos_cached.clone().cpu()
 
     tokenizer = LlamaTokenizer.from_pretrained(config_path)
     tokenizer.truncation_side = 'left'

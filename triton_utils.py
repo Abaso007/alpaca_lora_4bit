@@ -25,8 +25,6 @@ import custom_autotune
     key=['M', 'N'],
     nearest_power_of_two=True,
 )
-
-
 @triton.jit
 def matmul_248_kernel(a_ptr, b_ptr, c_ptr,
                       scales_ptr, zeros_ptr, g_ptr,
@@ -70,21 +68,21 @@ def matmul_248_kernel(a_ptr, b_ptr, c_ptr,
     # shifter is used to extract the N bits of each element in the 32-bit word from B
     scales_ptrs = scales_ptr + offs_bn[None, :]
     zeros_ptrs = zeros_ptr + (offs_bn[None, :] // infearure_per_bits) 
-    
+
     shifter = (offs_k % infearure_per_bits) * bits
     zeros_shifter = (offs_bn % infearure_per_bits) * bits
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-            
-    for k in range(0, num_pid_k):
+
+    for _ in range(num_pid_k):
         g_idx = tl.load(g_ptrs)
 
         # Fetch scales and zeros; these are per-outfeature and thus reused in the inner loop
         scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
         zeros = tl.load(zeros_ptrs + g_idx[:, None] * stride_zeros)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
-        
+
         zeros = (zeros >> zeros_shifter[None, :]) & maxq
         zeros = (zeros + 1)
-        
+
         a = tl.load(a_ptrs, mask=a_mask, other=0.0)   # (BLOCK_SIZE_M, BLOCK_SIZE_K)
         b = tl.load(b_ptrs)   # (BLOCK_SIZE_K, BLOCK_SIZE_N), but repeated
 
@@ -127,8 +125,6 @@ def matmul_248_kernel(a_ptr, b_ptr, c_ptr,
     key=['M', 'K'],
     nearest_power_of_two=True,
 )
-
-
 @triton.jit
 def trans_matmul_248_kernel(a_ptr, b_ptr, c_ptr,
                             scales_ptr, zeros_ptr, g_ptr,
@@ -170,23 +166,23 @@ def trans_matmul_248_kernel(a_ptr, b_ptr, c_ptr,
     b_ptrs = b_ptr + ((offs_bk[:, None] // infearure_per_bits) * stride_bk + offs_n[None, :] * stride_bn)   # (BLOCK_SIZE_K, BLOCK_SIZE_N)
     g_ptrs = g_ptr + offs_bk
     g_idx = tl.load(g_ptrs)
-    
+
     # shifter is used to extract the N bits of each element in the 32-bit word from B
     scales_ptrs = scales_ptr + offs_n[None, :]  + g_idx[:, None] * stride_scales
     zeros_ptrs = zeros_ptr + (offs_n[None, :] // infearure_per_bits) + g_idx[:, None] * stride_zeros
-    
+
     shifter = (offs_bk % infearure_per_bits) * bits
     zeros_shifter = (offs_n % infearure_per_bits) * bits
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_K), dtype=tl.float32)
-    
-    for k in range(0, num_pid_n):
+
+    for _ in range(num_pid_n):
         # Fetch scales and zeros; these are per-outfeature and thus reused in the inner loop
         scales = tl.load(scales_ptrs)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
         zeros = tl.load(zeros_ptrs)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
-        
+
         zeros = (zeros >> zeros_shifter[None, :]) & maxq
         zeros = (zeros + 1)
-        
+
         a = tl.load(a_ptrs, mask=a_mask, other=0.)   # (BLOCK_SIZE_M, BLOCK_SIZE_N)
         b = tl.load(b_ptrs)   # (BLOCK_SIZE_K, BLOCK_SIZE_N), but repeated
 
@@ -203,7 +199,7 @@ def trans_matmul_248_kernel(a_ptr, b_ptr, c_ptr,
         b_ptrs += BLOCK_SIZE_N
         scales_ptrs += BLOCK_SIZE_N
         zeros_ptrs += (BLOCK_SIZE_N // infearure_per_bits)
-        
+
     c = accumulator.to(tl.float16)
     c_ptrs = c_ptr + stride_cm * offs_am[:, None] + stride_cn * offs_bk[None, :]
     c_mask = (offs_am[:, None] < M) & (offs_bk[None, :] < K)

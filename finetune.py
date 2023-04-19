@@ -16,6 +16,7 @@
         }
     ]
 """
+
 # Early load config to replace attn if needed
 from arg_parser import get_config
 ft_config = get_config()
@@ -80,10 +81,7 @@ else:
     if ft_config.ddp:
         device_map = {'': 0}
     else:
-        if torch.cuda.device_count() > 1:
-            device_map = "auto"
-        else:
-            device_map = {'': 0}
+        device_map = "auto" if torch.cuda.device_count() > 1 else {'': 0}
     print('Device map for lora:', device_map)
     model = PeftModel.from_pretrained(model, ft_config.lora_apply_dir, device_map=device_map, torch_dtype=torch.float32, is_trainable=True)
     print(ft_config.lora_apply_dir, 'loaded')
@@ -103,13 +101,13 @@ tokenizer.pad_token_id = 0
 if not ft_config.skip:
     # Load Data
     data = None
-    if ft_config.ds_type == "txt" and not ft_config.skip:
+    if ft_config.ds_type == "txt":
         #### LLaMa
         data = train_data.TrainTxt(ft_config.dataset, ft_config.val_set_size, tokenizer, ft_config.cutoff_len)
-    elif ft_config.ds_type == "alpaca" and not ft_config.skip:
+    elif ft_config.ds_type == "alpaca":
         #### Stanford Alpaca-like Data
         data = train_data.TrainSAD(ft_config.dataset, ft_config.val_set_size, tokenizer, ft_config.cutoff_len)
-    elif ft_config.ds_type == "gpt4all" and not ft_config.skip:
+    elif ft_config.ds_type == "gpt4all":
         #### GPT4All Data
         data = train_data.TrainGPT4All(ft_config.dataset, ft_config.val_set_size, tokenizer, ft_config.cutoff_len)
     else:
@@ -168,7 +166,7 @@ if not ft_config.skip:
 
     # Run Trainer
     if ft_config.resume_checkpoint:
-        print('Resuming from {} ...'.format(ft_config.resume_checkpoint))
+        print(f'Resuming from {ft_config.resume_checkpoint} ...')
         state_dict_peft = torch.load(os.path.join(ft_config.resume_checkpoint, 'pytorch_model.bin'), map_location='cpu')
         set_peft_model_state_dict(model, state_dict_peft)
         trainer.train(ft_config.resume_checkpoint)
